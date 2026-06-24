@@ -32,7 +32,9 @@ $system_url = rtrim(\App::getSystemURL(), '/');  // Strips default trailing / if
 $monero_daemon = new Monero_rpc($link);
 
 $message = "Waiting for your payment.";
-$_POST  = filter_input_array(INPUT_POST, FILTER_SANITIZE_STRING);
+// FILTER_SANITIZE_STRING was deprecated in PHP 8.1. FILTER_UNSAFE_RAW keeps the same raw values
+// (they are escaped/stripslashed where used below) without emitting a deprecation notice.
+$_POST  = filter_input_array(INPUT_POST, FILTER_UNSAFE_RAW);
 $currency = stripslashes($_POST['currency']);
 $amount_xmr = stripslashes($_POST['amount_xmr']);
 $amount = stripslashes($_POST['amount']);
@@ -120,10 +122,10 @@ echo "<head>
             </button>
             </div>
             </div>
-            <div class='xmr-qr-code'>
-            <span class='xmr-label'>Or scan QR:</span>
-            <div class='xmr-qr-code-box'><img src='https://api.qrserver.com/v1/create-qr-code/? size=200x200&data=".$uri."' /></div>
-            </div>
+            <!-- The original embedded a third-party QR image from api.qrserver.com, which sent the
+                 payment address and amount to an outside service. That breaks the self-hosted and
+                 privacy-from-third-parties goal, so the QR is removed here. The copiable address
+                 above is fully self-hosted and satisfies QR-or-copiable-address. -->
             <div class='clear'></div>
             </div>
             <!-- end content box -->

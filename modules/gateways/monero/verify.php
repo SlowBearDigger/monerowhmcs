@@ -12,7 +12,9 @@ $status = "unknown";
 $gatewaymodule = "monero";
 $GATEWAY = getGatewayVariables($gatewaymodule);
 
-$_POST  = filter_input_array(INPUT_POST, FILTER_SANITIZE_STRING);
+// FILTER_SANITIZE_STRING was deprecated in PHP 8.1. FILTER_UNSAFE_RAW keeps the same raw values
+// without the deprecation notice; the values are validated against the callback hash below.
+$_POST  = filter_input_array(INPUT_POST, FILTER_UNSAFE_RAW);
 $invoice_id = $_POST['invoice_id'];
 $payment_id = $_POST['payment_id'];
 $amount_xmr = $_POST['amount_xmr'];
@@ -75,8 +77,10 @@ function handle_whmcs($invoice_id, $amount_xmr, $txn_amt, $txn_txid, $txn_paymen
 	$amount_atomic_units = $amount_xmr * 1000000000000;
 	
 	//check if monero tx already exists in whmcs 
-	$record = Capsule::table('tblaccounts')->where('transid', $txn_txid)->get();
-	$transaction_exists = $record[0]->transid;
+	// use first() so a no-match returns null. on PHP 8 the old $record[0]->transid threw a fatal
+	// (undefined array key + property on null) whenever the transaction was not already recorded.
+	$record = Capsule::table('tblaccounts')->where('transid', $txn_txid)->first();
+	$transaction_exists = $record ? $record->transid : null;
 	if ($txn_payment_id == $payment_id) {
 		if (!$transaction_exists) {
 			//check one more time then add the payment if the transaction has not been added.
@@ -108,7 +112,8 @@ function add_payment($command, $invoice_id, $txn_txid, $gatewaymodule, $fiat_pai
 	// Add the invoice payment - either of the next two lines work
 	// $results = localAPI($command, $postData, $adminUsername);
     	addInvoicePayment($invoice_id,$txn_txid,$fiat_paid,$fee,$gatewaymodule);
-	logTransaction($gatewaymodule, $postData, "Success: ".$message);
+	// $message is not in scope here; log a plain status (PHP 8 warns on the undefined variable)
+	logTransaction($gatewaymodule, $postData, "Success");
 }
 
 
