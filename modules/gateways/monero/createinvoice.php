@@ -32,7 +32,9 @@ $system_url = rtrim(\App::getSystemURL(), '/');  // Strips default trailing / if
 $monero_daemon = new Monero_rpc($link);
 
 $message = "Waiting for your payment.";
-$_POST  = filter_input_array(INPUT_POST, FILTER_SANITIZE_STRING);
+// FILTER_SANITIZE_STRING was deprecated in PHP 8.1. FILTER_UNSAFE_RAW keeps the same raw values
+// (they are escaped/stripslashed where used below) without emitting a deprecation notice.
+$_POST  = filter_input_array(INPUT_POST, FILTER_UNSAFE_RAW);
 $currency = stripslashes($_POST['currency']);
 $amount_xmr = stripslashes($_POST['amount_xmr']);
 $amount = stripslashes($_POST['amount']);
@@ -48,6 +50,9 @@ echo "<link href='$system_url/modules/gateways/monero/style.css' rel='stylesheet
 echo  "<script src='https://code.jquery.com/jquery-3.6.0.min.js'></script>";
 echo  "<script src='$system_url/modules/gateways/monero/spin.js'></script>";
 echo  "<script src='https://cdnjs.cloudflare.com/ajax/libs/clipboard.js/2.0.10/clipboard.min.js'></script>";
+// local QR generator (qrcode-generator, MIT). Replaces the original third-party QR image so the
+// payment address and amount never leave the merchant's server.
+echo  "<script src='$system_url/modules/gateways/monero/qrcode.min.js'></script>";
 
 
 echo "<title>Invoice</title>";
@@ -122,8 +127,9 @@ echo "<head>
             </div>
             <div class='xmr-qr-code'>
             <span class='xmr-label'>Or scan QR:</span>
-            <div class='xmr-qr-code-box'><img src='https://api.qrserver.com/v1/create-qr-code/? size=200x200&data=".$uri."' /></div>
+            <div class='xmr-qr-code-box'><div id='xmr-qr'></div></div>
             </div>
+            <script>(function(){var q=qrcode(0,'M');q.addData('".$uri."');q.make();document.getElementById('xmr-qr').innerHTML=q.createImgTag(5,8);})();</script>
             <div class='clear'></div>
             </div>
             <!-- end content box -->

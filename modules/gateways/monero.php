@@ -38,7 +38,10 @@ function monero_Config(){
 */
 function monero_retrieve_price_list($currencies = 'BTC,USD,EUR,CAD,INR,GBP,BRL') {
 	
-	$source = 'https://min-api.cryptocompare.com/data/price?fsym=XMR&tsyms='.$currencies.'&extraParams=monero_woocommerce';
+	// cryptocompare (the original source) now returns HTTP 401 and requires an API key, so the
+	// gateway can no longer fetch a rate and crashes on the fiat conversion. CoinGecko's simple
+	// price endpoint is free and needs no key, which restores the original behaviour.
+	$source = 'https://api.coingecko.com/api/v3/simple/price?ids=monero&vs_currencies='.strtolower($currencies);
 	
 	if (ini_get('allow_url_fopen')) {
 		
@@ -80,39 +83,37 @@ function monero_retrieve_price_list($currencies = 'BTC,USD,EUR,CAD,INR,GBP,BRL')
 
 function monero_retrieve_price($currency) {
 	global $currency_symbol;
-	$xmr_price = monero_retrieve_price_list('BTC,USD,EUR,CAD,INR,GBP,BRL');
-    $price = json_decode($xmr_price, TRUE);
-	if(!isset($price)){
-		echo "There was an error";
+	// CoinGecko returns {"monero":{"usd":..,"eur":..,...}} with lowercase keys, so the lookup and
+	// the currency symbol are mapped here. The downstream contract is unchanged: a numeric rate.
+	$symbols = array('USD' => '$', 'EUR' => '€', 'CAD' => '$', 'GBP' => '£', 'INR' => '₹', 'BRL' => 'R$ ', 'BTC' => '₿');
+	$currency = strtoupper($currency);
+	if ($currency == 'XMR') {
+		return '1';
 	}
-	if ($currency == 'USD') {
-		$currency_symbol = "$";
-		return $price['USD'];
+	if (isset($symbols[$currency])) {
+		$currency_symbol = $symbols[$currency];
 	}
-	if ($currency == 'EUR') {
-		$currency_symbol = "€";
-		return $price['EUR'];
+	$xmr_price = monero_retrieve_price_list('btc,usd,eur,cad,inr,gbp,brl');
+	$price = json_decode($xmr_price, TRUE);
+	$vs = strtolower($currency);
+	if (isset($price['monero'][$vs]) && $price['monero'][$vs] > 0) {
+		return $price['monero'][$vs];
 	}
-	if ($currency == 'CAD'){
-		$currency_symbol = "$";
-		return $price['CAD'];
+	// fallback: some hosts (datacenter IPs) are blocked by CoinGecko's free endpoint. Kraken's
+	// public ticker needs no key and is reachable from servers, but only carries the major pairs.
+	$kraken_pairs = array('USD' => 'XMRUSD', 'EUR' => 'XMREUR', 'BTC' => 'XMRXBT');
+	if (isset($kraken_pairs[$currency])) {
+		$kr = @file_get_contents('https://api.kraken.com/0/public/Ticker?pair=' . $kraken_pairs[$currency]);
+		$kd = json_decode($kr, true);
+		if (isset($kd['result']) && is_array($kd['result'])) {
+			$row = reset($kd['result']);
+			if (isset($row['c'][0]) && $row['c'][0] > 0) {
+				return $row['c'][0];
+			}
+		}
 	}
-	if ($currency == 'GBP'){
-		$currency_symbol = "£";
-		return $price['GBP'];
-	}
-	if ($currency == 'INR'){
-		$currency_symbol = "₹";
-		return $price['INR'];
-	}
-	if ($currency == 'BRL'){
-		$currency_symbol = "R$ ";
-		return $price['BRL'];
-	}
-	if($currency == 'XMR'){
-		$price = '1';
-		return $price;
-	}
+	echo "There was an error retrieving the XMR price";
+	return null;
 }
 
 function monero_changeto($amount, $currency){
@@ -145,7 +146,9 @@ if(!$gateway["type"]) die("Module not activated");
 	$amount = $params['amount'];
 	$discount_setting = $gateway['discount_percentage'];
 	$discount_percentage = 100 - (preg_replace("/[^0-9]/", "", $discount_setting));
-	$amount = money_format('%i', $amount * ($discount_percentage / 100));
+	// money_format() was removed in PHP 8.0, which is what current WHMCS runs on. Format the
+	// discounted amount as a plain decimal instead (no locale separators that could break parsing).
+	$amount = number_format($amount * ($discount_percentage / 100), 2, '.', '');
 	$currency = $params['currency'];
 	$client_id = $params['clientdetails']['id'];
 	$firstname = $params['clientdetails']['firstname'];
