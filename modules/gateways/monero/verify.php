@@ -4,6 +4,10 @@ include("../../../init.php");
 include("../../../includes/functions.php");
 include("../../../includes/gatewayfunctions.php");
 include("../../../includes/invoicefunctions.php");
+// xmr_to_fiat() / monero_retrieve_price() are defined in the gateway module. verify.php is hit
+// directly via AJAX, so WHMCS does not auto-load them; include the module or crediting a detected
+// payment fatals with "Call to undefined function xmr_to_fiat()".
+require_once(__DIR__ . '/../monero.php');
 
 use Illuminate\Database\Capsule\Manager as Capsule;
 
@@ -48,7 +52,8 @@ function verify_payment($payment_id, $amount, $amount_xmr, $invoice_id, $fee, $s
 		// send each monero tx in the mempool to handle_whmcs
 		if ($check_mempool) {
 			$get_payments_method = $monero_daemon->get_transfers('pool', true);
-			foreach ($get_payments_method["pool"] as $tx => $transactions) {
+			// the wallet omits "pool"/"payments" entirely when empty; ?? [] avoids foreach(null)
+			foreach (($get_payments_method["pool"] ?? []) as $tx => $transactions) {
 				$txn_amt = $transactions["amount"];
 				$txn_txid = $transactions["txid"];
 				$txn_payment_id = $transactions["payment_id"];
@@ -59,7 +64,7 @@ function verify_payment($payment_id, $amount, $amount_xmr, $invoice_id, $fee, $s
 		}
 		// send each monero tx to handle_whmcs
 		$get_payments_method = $monero_daemon->get_payments($payment_id);
-		foreach ($get_payments_method["payments"] as $tx => $transactions) {
+		foreach (($get_payments_method["payments"] ?? []) as $tx => $transactions) {
 			$txn_amt = $transactions["amount"];
 			$txn_txid = $transactions["tx_hash"];
 			$txn_payment_id = $transactions["payment_id"];
@@ -74,6 +79,7 @@ function verify_payment($payment_id, $amount, $amount_xmr, $invoice_id, $fee, $s
 }
 
 function handle_whmcs($invoice_id, $amount_xmr, $txn_amt, $txn_txid, $txn_payment_id, $payment_id, $currency, $gatewaymodule) {
+	$fee = "0.0"; // not scoped in from verify_payment; default it so add_payment has a value (PHP 8 warns on undefined)
 	$amount_atomic_units = $amount_xmr * 1000000000000;
 	
 	//check if monero tx already exists in whmcs 

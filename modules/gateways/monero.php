@@ -118,6 +118,11 @@ function monero_retrieve_price($currency) {
 
 function monero_changeto($amount, $currency){
     $xmr_live_price = monero_retrieve_price($currency);
+	// monero_retrieve_price() returns null when every price source fails. Guard before dividing so
+	// the checkout shows 0 instead of fataling with "Unsupported operand types: float / null" on PHP 8.
+	if (!is_numeric($xmr_live_price) || $xmr_live_price <= 0) {
+		return 0;
+	}
 	$live_for_storing = $xmr_live_price * 100; //This will remove the decimal so that it can easily be stored as an integer
 	$new_amount = $amount / $xmr_live_price;
 	$rounded_amount = round($new_amount, 12);
@@ -127,6 +132,9 @@ function monero_changeto($amount, $currency){
 function xmr_to_fiat($amount, $currency){
     $xmr_live_price = monero_retrieve_price($currency);
     $amount = $amount / 1000000000000;
+	if (!is_numeric($xmr_live_price) || $xmr_live_price <= 0) {
+		return 0;
+	}
 	$new_amount = $amount * $xmr_live_price;
 	$rounded_amount = round($new_amount, 2);
     return $rounded_amount;
