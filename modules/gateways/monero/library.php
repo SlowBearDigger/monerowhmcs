@@ -12,7 +12,9 @@
 
 class Monero_rpc
 {
-    protected $url = null, $is_debug = false, $parameters_structure = 'array';
+    // username/password are set from the gateway config in the constructor. declare them so PHP 8.2+
+    // does not emit a "Creation of dynamic property" deprecation (which surfaces as an HTTP 500).
+    protected $url = null, $is_debug = false, $parameters_structure = 'array', $username = null, $password = null;
 
     protected $curl_options = array(
         CURLOPT_CONNECTTIMEOUT => 8,
