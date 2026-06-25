@@ -49,6 +49,9 @@ function verify_payment($payment_id, $amount, $amount_xmr, $invoice_id, $fee, $s
 
  		//payment_id is sometimes empty
 
+		// detection talks to the wallet rpc/daemon; a transient outage must not 500 the customer's
+		// polling page, so wrap it and stay in the waiting state on any rpc error.
+		try {
 		// send each monero tx in the mempool to handle_whmcs
 		if ($check_mempool) {
 			$get_payments_method = $monero_daemon->get_transfers('pool', true);
@@ -71,6 +74,9 @@ function verify_payment($payment_id, $amount, $amount_xmr, $invoice_id, $fee, $s
 			if(isset($txn_amt)) { 
 				return handle_whmcs($invoice_id, $amount_xmr, $txn_amt, $txn_txid, $txn_payment_id, $payment_id, $currency, $gatewaymodule);
 			}
+		}
+		} catch (\Throwable $e) {
+			// wallet rpc unreachable or daemon error: keep waiting instead of throwing on the poll
 		}
 	} else {
 		return "Error: No payment ID.";
