@@ -98,6 +98,11 @@ function handle_whmcs($invoice_id, $amount_xmr, $txn_amt, $txn_txid, $txn_paymen
 			//check one more time then add the payment if the transaction has not been added.
 			checkCbTransID($txn_txid);
 			$fiat_paid = xmr_to_fiat($txn_amt, $currency);
+			// if the feed is down, crediting now records 0 fiat and the transid guard above means it
+			// never gets corrected. Skip and let the next poll retry once the feed is back.
+			if ($fiat_paid <= 0) {
+				return "Waiting for your payment.";
+			}
 			add_payment("AddInvoicePayment", $invoice_id, $txn_txid, $gatewaymodule, $fiat_paid, $txn_amt / 1000000000000, $payment_id, $fee);
 		}
 		// add 2% when doing the comparison in case of price fluctuations?
