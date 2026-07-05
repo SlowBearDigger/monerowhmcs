@@ -136,6 +136,8 @@ class Monero_rpc
         curl_setopt($ch, CURLOPT_POST, 1);
         curl_setopt($ch, CURLOPT_POSTFIELDS, $pRequest);
         curl_setopt($ch, CURLOPT_HTTPHEADER, array('Content-type: application/json'));
+        // send a User-Agent; some reverse proxies in front of the wallet RPC reject blank ones
+        curl_setopt($ch, CURLOPT_USERAGENT, 'monerowhmcs/1.1 (+https://github.com/monero-integrations/monerowhmcs)');
         curl_setopt($ch, CURLOPT_ENCODING, 'gzip,deflate');
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
 

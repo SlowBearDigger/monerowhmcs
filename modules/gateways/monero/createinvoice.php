@@ -32,14 +32,14 @@ $system_url = rtrim(\App::getSystemURL(), '/');  // Strips default trailing / if
 $monero_daemon = new Monero_rpc($link);
 
 $message = "Waiting for your payment.";
-// FILTER_SANITIZE_STRING was deprecated in PHP 8.1. FILTER_UNSAFE_RAW keeps the same raw values
-// (they are escaped/stripslashed where used below) without emitting a deprecation notice.
+// FILTER_SANITIZE_STRING is gone in PHP 8.1. These get echoed into the page, so strip each one
+// down to the chars it can legitimately hold (digits and a currency code) to kill any XSS.
 $_POST  = filter_input_array(INPUT_POST, FILTER_UNSAFE_RAW);
-$currency = stripslashes($_POST['currency']);
-$amount_xmr = stripslashes($_POST['amount_xmr']);
-$amount = stripslashes($_POST['amount']);
+$currency = preg_replace('/[^A-Za-z]/', '', $_POST['currency'] ?? '');
+$amount_xmr = preg_replace('/[^0-9.]/', '', $_POST['amount_xmr'] ?? '');
+$amount = preg_replace('/[^0-9.]/', '', $_POST['amount'] ?? '');
 $payment_id = monero_payment_id();
-$invoice_id = stripslashes($_POST['invoice_id']);
+$invoice_id = preg_replace('/[^0-9]/', '', $_POST['invoice_id'] ?? '');
 $array_integrated_address = $monero_daemon->make_integrated_address($payment_id);
 $address = $array_integrated_address['integrated_address'];
 $uri  =  "monero:$address?amount=$amount_xmr";
@@ -126,6 +126,7 @@ echo "<head>
                  payment address and amount to an outside service. That breaks the self-hosted and
                  privacy-from-third-parties goal, so the QR is removed here. The copiable address
                  above is fully self-hosted and satisfies QR-or-copiable-address. -->
+
             <div class='clear'></div>
             </div>
             <!-- end content box -->

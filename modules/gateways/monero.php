@@ -37,54 +37,86 @@ function monero_Config(){
 *  
 */
 function monero_retrieve_price_list($currencies = 'BTC,USD,EUR,CAD,INR,GBP,BRL') {
-	
-	// cryptocompare (the original source) now returns HTTP 401 and requires an API key, so the
-	// gateway can no longer fetch a rate and crashes on the fiat conversion. CoinGecko's simple
-	// price endpoint is free and needs no key, which restores the original behaviour.
+
+	// cryptocompare now returns 401 without an API key, so we use CoinGecko's free price endpoint.
 	$source = 'https://api.coingecko.com/api/v3/simple/price?ids=monero&vs_currencies='.strtolower($currencies);
-	
+
+	return monero_http_get($source);
+
+}
+
+// GET with a User-Agent set. CoinGecko is behind Cloudflare and 403s requests that don't send one.
+// Warnings are silenced so a failed fetch can't break the pay page or the verify AJAX output; callers
+// check for the false return. Returns the body, or false on failure.
+function monero_http_get($url) {
+	$ua = 'monerowhmcs/1.1 (+https://github.com/monero-integrations/monerowhmcs)';
 	if (ini_get('allow_url_fopen')) {
-		
-		return file_get_contents($source);
-		
+		$context = stream_context_create(array('http' => array(
+			'header'  => "User-Agent: " . $ua . "\r\nAccept: application/json\r\n",
+			'timeout' => 10,
+		)));
+		$response = @file_get_contents($url, false, $context);
+		if ($response !== false) {
+			return $response;
+		}
+		// allow_url_fopen can be on while outbound fopen is still blocked (proxy setups); try curl
 	}
-	
 	if (!function_exists('curl_init')) {
-		
-		echo 'cURL not available.';
-		
 		return false;
-		
 	}
-	
-	$options = array (
-		CURLOPT_URL            => $source,
+	$ch = curl_init();
+	curl_setopt_array($ch, array(
+		CURLOPT_URL            => $url,
 		CURLOPT_RETURNTRANSFER => true,
 		CURLOPT_CONNECTTIMEOUT => 10,
 		CURLOPT_TIMEOUT        => 20,
-	);
-	
-	$ch = curl_init();
-	curl_setopt_array($ch, $options);
-	
-	$xmr_price = curl_exec($ch);
-	
+		CURLOPT_USERAGENT      => $ua,
+		CURLOPT_HTTPHEADER     => array('Accept: application/json'),
+	));
+	$response = @curl_exec($ch);
 	curl_close($ch);
-	
-	if ($xmr_price === false) {
-		
-		echo 'Error while retrieving XMR price list';
-		
+	return $response;
+}
+
+// Exchange rate cache, one timestamped entry per currency. Saves an HTTP round trip on every
+// invoice render, keeps us under CoinGecko's rate limit, and holds the last good rate so a short
+// feed outage doesn't break checkout. Filename is keyed off the secret so nobody else on a shared
+// host can plant a fake price file first.
+function monero_price_cache_file() {
+	$gateway = getGatewayVariables('monero');
+	return sys_get_temp_dir() . '/monerowhmcs_' . md5('pricecache' . $gateway['secretkey']) . '.json';
+}
+
+function monero_price_cache_get($vs, $max_age) {
+	$raw = @file_get_contents(monero_price_cache_file());
+	$data = $raw ? json_decode($raw, true) : null;
+	if (isset($data[$vs]['v'], $data[$vs]['ts'])
+		&& is_numeric($data[$vs]['v']) && $data[$vs]['v'] > 0
+		&& (time() - $data[$vs]['ts']) < $max_age) {
+		return $data[$vs]['v'];
 	}
-	
-	return $xmr_price;
-	
+	return null;
+}
+
+function monero_price_cache_put($rates) {
+	$file = monero_price_cache_file();
+	$raw = @file_get_contents($file);
+	$data = $raw ? json_decode($raw, true) : array();
+	if (!is_array($data)) {
+		$data = array();
+	}
+	$now = time();
+	foreach ($rates as $vs => $rate) {
+		if (is_numeric($rate) && $rate > 0) {
+			$data[$vs] = array('v' => $rate, 'ts' => $now);
+		}
+	}
+	@file_put_contents($file, json_encode($data), LOCK_EX);
 }
 
 function monero_retrieve_price($currency) {
 	global $currency_symbol;
-	// CoinGecko returns {"monero":{"usd":..,"eur":..,...}} with lowercase keys, so the lookup and
-	// the currency symbol are mapped here. The downstream contract is unchanged: a numeric rate.
+	// CoinGecko uses lowercase keys, so map the code and its symbol here. Still returns a numeric rate.
 	$symbols = array('USD' => '$', 'EUR' => '€', 'CAD' => '$', 'GBP' => '£', 'INR' => '₹', 'BRL' => 'R$ ', 'BTC' => '₿');
 	$currency = strtoupper($currency);
 	if ($currency == 'XMR') {
@@ -93,31 +125,52 @@ function monero_retrieve_price($currency) {
 	if (isset($symbols[$currency])) {
 		$currency_symbol = $symbols[$currency];
 	}
+	$vs = strtolower($currency);
+
+	// a rate under 90 seconds old is fresh enough for an invoice, so skip the round trip
+	$cached = monero_price_cache_get($vs, 90);
+	if ($cached !== null) {
+		return $cached;
+	}
+
 	$xmr_price = monero_retrieve_price_list('btc,usd,eur,cad,inr,gbp,brl');
 	$price = json_decode($xmr_price, TRUE);
-	$vs = strtolower($currency);
-	if (isset($price['monero'][$vs]) && $price['monero'][$vs] > 0) {
-		return $price['monero'][$vs];
+	if (isset($price['monero']) && is_array($price['monero'])) {
+		monero_price_cache_put($price['monero']);
+		if (isset($price['monero'][$vs]) && $price['monero'][$vs] > 0) {
+			return $price['monero'][$vs];
+		}
 	}
-	// fallback: some hosts (datacenter IPs) are blocked by CoinGecko's free endpoint. Kraken's
-	// public ticker needs no key and is reachable from servers, but only carries the major pairs.
+	// fallback for hosts whose datacenter IP CoinGecko blocks. Kraken's public ticker needs no key
+	// and works from servers, but only covers the major pairs.
 	$kraken_pairs = array('USD' => 'XMRUSD', 'EUR' => 'XMREUR', 'BTC' => 'XMRXBT');
 	if (isset($kraken_pairs[$currency])) {
-		$kr = @file_get_contents('https://api.kraken.com/0/public/Ticker?pair=' . $kraken_pairs[$currency]);
+		$kr = monero_http_get('https://api.kraken.com/0/public/Ticker?pair=' . $kraken_pairs[$currency]);
 		$kd = json_decode($kr, true);
 		if (isset($kd['result']) && is_array($kd['result'])) {
 			$row = reset($kd['result']);
 			if (isset($row['c'][0]) && $row['c'][0] > 0) {
+				monero_price_cache_put(array($vs => $row['c'][0]));
 				return $row['c'][0];
 			}
 		}
 	}
-	echo "There was an error retrieving the XMR price";
+	// both feeds down: use the last good rate for up to 15 minutes so a blip doesn't take checkout
+	// with it. After that, bail and let the caller error rather than price off a stale rate.
+	$stale = monero_price_cache_get($vs, 900);
+	if ($stale !== null) {
+		return $stale;
+	}
 	return null;
 }
 
 function monero_changeto($amount, $currency){
     $xmr_live_price = monero_retrieve_price($currency);
+	// retrieve_price returns null when every source fails. Guard the divide so checkout shows 0
+	// instead of a PHP 8 "float / null" fatal.
+	if (!is_numeric($xmr_live_price) || $xmr_live_price <= 0) {
+		return 0;
+	}
 	$live_for_storing = $xmr_live_price * 100; //This will remove the decimal so that it can easily be stored as an integer
 	$new_amount = $amount / $xmr_live_price;
 	$rounded_amount = round($new_amount, 12);
@@ -165,7 +218,12 @@ if(!$gateway["type"]) die("Module not activated");
 	$systemurl = $params['systemurl'];
     // Transform Current Currency into Monero
 	$amount_xmr = monero_changeto($amount, $currency);
-	
+	// no rate means we cannot price the invoice. Showing a pay form for 0 XMR would sign the
+	// verification hash for a zero amount, so refuse to render it and let the customer retry.
+	if ($amount_xmr <= 0) {
+		return '<p>The XMR exchange rate is temporarily unavailable. Please reload this page in a few minutes.</p>';
+	}
+
 	$post = array(
         'invoice_id'    => $invoiceid,
         'systemURL'     => $systemurl,
