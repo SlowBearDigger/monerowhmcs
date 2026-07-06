@@ -119,11 +119,6 @@ echo "<head>
             </button>
             </div>
             </div>
-            <!-- The original embedded a third-party QR image from api.qrserver.com, which sent the
-                 payment address and amount to an outside service. That breaks the self-hosted and
-                 privacy-from-third-parties goal, so the QR is removed here. The copiable address
-                 above is fully self-hosted and satisfies QR-or-copiable-address. -->
-
             <div class='clear'></div>
             </div>
             <!-- end content box -->

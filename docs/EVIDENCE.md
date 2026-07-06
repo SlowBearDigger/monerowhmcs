@@ -18,9 +18,9 @@ amount is converted to XMR, and the payment screen opens. Verified on both WHMCS
 The reported symptom was not being able to add a working Monero gateway. On current WHMCS (8.13.4
 and 9.0.5) the module activates and its admin config form renders fine, before and after this fix.
 What made it unusable was the checkout fatal (`money_format`) and the dead price feed, so you could
-add the gateway but a customer could never finish paying. With those fixed the whole flow works.
-Here is the admin flow on the fixed module: activate, save the settings, re-open the config page,
-and the settings are still there on both versions:
+add the gateway but a customer could never finish paying. With those fixed, the admin setup and
+checkout path work again. Here is the admin check on the fixed module: activate, save the settings,
+re-open the config page, and the settings are still there on both versions:
 
 WHMCS 8.13.4
 
@@ -39,8 +39,8 @@ saved config persists: address=95 chars, daemon_host=walletrpc, port=18083
 ```
 
 The stored address is a full Monero primary address (95 characters), which round-trips through
-WHMCS's encrypted gateway settings without truncation. Together with the checkout below, this covers
-the broken admin and checkout path on PHP 8.x.
+WHMCS's encrypted gateway settings without truncation. The admin form itself was not the PHP 8
+fatal; the broken path was checkout and payment handling after the gateway was enabled.
 
 ## Checkout, local QR branch (`fix-php8-local-qr`)
 
@@ -60,7 +60,7 @@ satisfies "QR or copiable address" and keeps everything self-hosted.
 
 - The integrated address shown is real, returned by `make_integrated_address` from a stagenet
   `monero-wallet-rpc` (a view-only wallet built from an address and view key).
-- The small loading indicator near the top is the payment poll. In this screenshot run the test
-  wallet-rpc was offline, so the poll could not reach a daemon. Against a live daemon it reads
-  "Waiting for your payment" and follows the existing payment detection path. The detection logic in
-  `verify.php` was not redesigned, only the PHP 8 compatibility shims were added.
+- The small loading indicator near the top is the payment poll. In the screenshot run,
+  `monero-wallet-rpc` was reachable and returned the integrated address; the wallet had no matching
+  payment yet, so the poll stayed in the existing "Waiting for your payment" state. The detection
+  logic in `verify.php` was not redesigned, only the PHP 8 compatibility shims were added.

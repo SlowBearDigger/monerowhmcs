@@ -79,19 +79,29 @@ function monero_http_get($url) {
 
 // Exchange rate cache, one timestamped entry per currency. Saves an HTTP round trip on every
 // invoice render, keeps us under CoinGecko's rate limit, and holds the last good rate so a short
-// feed outage doesn't break checkout. Filename is keyed off the secret so nobody else on a shared
-// host can plant a fake price file first.
+// feed outage doesn't break checkout. It only turns on once the admin has configured a real module
+// secret; the shipped default is public, so it must not be used to key a temp-file cache.
 function monero_price_cache_file() {
 	$gateway = getGatewayVariables('monero');
-	return sys_get_temp_dir() . '/monerowhmcs_' . md5('pricecache' . $gateway['secretkey']) . '.json';
+	$secret = isset($gateway['secretkey']) ? $gateway['secretkey'] : '';
+	if ($secret == '' || $secret == '21ieudgqwhb32i7tyg') {
+		return null;
+	}
+	return sys_get_temp_dir() . '/monerowhmcs_' . hash('sha256', 'pricecache' . $secret) . '.json';
 }
 
 function monero_price_cache_get($vs, $max_age) {
-	$raw = @file_get_contents(monero_price_cache_file());
+	$file = monero_price_cache_file();
+	if ($file === null) {
+		return null;
+	}
+	$raw = @file_get_contents($file);
 	$data = $raw ? json_decode($raw, true) : null;
+	$now = time();
 	if (isset($data[$vs]['v'], $data[$vs]['ts'])
 		&& is_numeric($data[$vs]['v']) && $data[$vs]['v'] > 0
-		&& (time() - $data[$vs]['ts']) < $max_age) {
+		&& is_numeric($data[$vs]['ts']) && $data[$vs]['ts'] <= $now
+		&& ($now - $data[$vs]['ts']) < $max_age) {
 		return $data[$vs]['v'];
 	}
 	return null;
@@ -99,6 +109,9 @@ function monero_price_cache_get($vs, $max_age) {
 
 function monero_price_cache_put($rates) {
 	$file = monero_price_cache_file();
+	if ($file === null) {
+		return;
+	}
 	$raw = @file_get_contents($file);
 	$data = $raw ? json_decode($raw, true) : array();
 	if (!is_array($data)) {
