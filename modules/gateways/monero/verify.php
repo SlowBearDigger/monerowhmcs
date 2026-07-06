@@ -76,7 +76,14 @@ function verify_payment($payment_id, $amount, $amount_xmr, $invoice_id, $fee, $s
 			}
 		}
 		} catch (\Throwable $e) {
-			// wallet rpc unreachable or daemon error: keep waiting instead of throwing on the poll
+			// keep the customer poll in the waiting state, but record the real failure for the admin
+			if (function_exists('logTransaction')) {
+				logTransaction($gatewaymodule, array(
+					'invoice_id' => $invoice_id,
+					'payment_id' => $payment_id,
+					'error' => $e->getMessage(),
+				), 'Payment verification error');
+			}
 		}
 	} else {
 		return "Error: No payment ID.";
@@ -100,7 +107,7 @@ function handle_whmcs($invoice_id, $amount_xmr, $txn_amt, $txn_txid, $txn_paymen
 			$fiat_paid = xmr_to_fiat($txn_amt, $currency);
 			// if the feed is down, crediting now records 0 fiat and the transid guard above means it
 			// never gets corrected. Skip and let the next poll retry once the feed is back.
-			if ($fiat_paid <= 0) {
+			if (!is_numeric($fiat_paid) || $fiat_paid <= 0) {
 				return "Waiting for your payment.";
 			}
 			add_payment("AddInvoicePayment", $invoice_id, $txn_txid, $gatewaymodule, $fiat_paid, $txn_amt / 1000000000000, $payment_id, $fee);

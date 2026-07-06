@@ -27,8 +27,9 @@ stops payments from being priced:
 ## What was fixed
 
 - `money_format()` replaced with `number_format()`.
-- `FILTER_SANITIZE_STRING` replaced with `FILTER_UNSAFE_RAW` (the values are still escaped where
-  they are used).
+- `FILTER_SANITIZE_STRING` replaced with `FILTER_UNSAFE_RAW`; checkout inputs that are printed on
+  the payment page are reduced to the characters they can legitimately contain, and the verify poll
+  keeps the existing callback hash check for the payment fields.
 - The `tblaccounts` lookup uses `first()` with a null check.
 - The price feed now uses CoinGecko (free, no key) with a Kraken fallback for USD, EUR and BTC,
   because CoinGecko's free endpoint blocks some datacenter IPs and WHMCS often runs on a VPS.
@@ -45,16 +46,17 @@ against the self-hosted, no-third-parties goal, so it could not stay. There are 
 can pick the trade-off you prefer:
 
 - **`fix-php8-no-qr`** removes the third-party QR and keeps the copiable address. Smallest change.
-- **`fix-php8-local-qr`** keeps a QR, but generates it on your own server with a small bundled MIT
-  library ([qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator)), so nothing
-  leaves the server.
+- **`fix-php8-local-qr`** keeps a QR, but serves a small bundled MIT library
+  ([qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator)) and generates it in the
+  customer's browser. The payment address and amount no longer go to a third-party QR service.
 
 Both satisfy "QR or copiable address" with no third-party call.
 
 ## Evidence
 
-See [docs/EVIDENCE.md](docs/EVIDENCE.md). The fix was tested end to end on WHMCS 8.13.4 and 9.0.5
-(PHP 8.3) in Docker, with `monero-wallet-rpc` running on stagenet.
+See [docs/EVIDENCE.md](docs/EVIDENCE.md). The admin setup, checkout render, integrated-address
+creation, verify poll, and invoice-credit path were tested on WHMCS 8.13.4 and 9.0.5 (PHP 8.3) in
+Docker, with `monero-wallet-rpc` running on stagenet.
 
 ## Install
 
