@@ -30,9 +30,7 @@ $system_url = rtrim(\App::getSystemURL(), '/');  // Strips default trailing / if
 $monero_daemon = new Monero_rpc($link);
 
 $message = "Waiting for your payment.";
-// FILTER_SANITIZE_STRING is gone in PHP 8.1. These get echoed into the page, so validate or strip
-// them down before rendering.
-$_POST  = filter_input_array(INPUT_POST, FILTER_UNSAFE_RAW);
+$_POST = filter_input_array(INPUT_POST, FILTER_SANITIZE_FULL_SPECIAL_CHARS);
 $currency = preg_replace('/[^A-Za-z]/', '', $_POST['currency'] ?? '');
 $amount_xmr_raw = $_POST['amount_xmr'] ?? '';
 if (!is_numeric($amount_xmr_raw) || $amount_xmr_raw <= 0) {
@@ -54,7 +52,7 @@ $uri  =  "monero:$address?amount=$amount_xmr";
 $secretKey = $GATEWAY['secretkey'];
 $hash = md5($invoice_id . $payment_id . $amount_xmr . $secretKey);
 echo "<link href='$system_url/modules/gateways/monero/style.css' rel='stylesheet'>";
-echo  "<script src='https://code.jquery.com/jquery-3.6.0.min.js'></script>";
+echo  "<script src='https://code.jquery.com/jquery-3.7.1.min.js'></script>";
 echo  "<script src='$system_url/modules/gateways/monero/spin.js'></script>";
 echo  "<script src='https://cdnjs.cloudflare.com/ajax/libs/clipboard.js/2.0.10/clipboard.min.js'></script>";
 // local QR generator (qrcode-generator, MIT). Replaces the original third-party QR image so the

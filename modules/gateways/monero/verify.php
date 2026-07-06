@@ -16,9 +16,7 @@ $status = "unknown";
 $gatewaymodule = "monero";
 $GATEWAY = getGatewayVariables($gatewaymodule);
 
-// FILTER_SANITIZE_STRING was deprecated in PHP 8.1. FILTER_UNSAFE_RAW keeps the same raw values
-// without the deprecation notice; the values are validated against the callback hash below.
-$_POST  = filter_input_array(INPUT_POST, FILTER_UNSAFE_RAW);
+$_POST = filter_input_array(INPUT_POST, FILTER_SANITIZE_FULL_SPECIAL_CHARS);
 $invoice_id = $_POST['invoice_id'];
 $payment_id = $_POST['payment_id'];
 $amount_xmr = $_POST['amount_xmr'];

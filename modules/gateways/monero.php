@@ -46,20 +46,21 @@ function monero_retrieve_price_list($currencies = 'BTC,USD,EUR,CAD,INR,GBP,BRL')
 }
 
 // GET with a User-Agent set. CoinGecko is behind Cloudflare and 403s requests that don't send one.
-// Warnings are silenced so a failed fetch can't break the pay page or the verify AJAX output; callers
-// check for the false return. Returns the body, or false on failure.
+// Tries file_get_contents first, then falls back to curl: allow_url_fopen can be enabled while
+// outbound fopen is still blocked (proxy setups). Warnings are silenced so a failed fetch can't
+// break the pay page or the verify AJAX output; callers check for the false return. Returns the
+// body, or false on failure.
 function monero_http_get($url) {
 	$ua = 'monerowhmcs/1.1 (+https://github.com/monero-integrations/monerowhmcs)';
 	if (ini_get('allow_url_fopen')) {
 		$context = stream_context_create(array('http' => array(
-			'header'  => "User-Agent: " . $ua . "\r\nAccept: application/json\r\n",
+			'header'  => "User-Agent: $ua\r\nAccept: application/json\r\n",
 			'timeout' => 10,
 		)));
 		$response = @file_get_contents($url, false, $context);
 		if ($response !== false) {
 			return $response;
 		}
-		// allow_url_fopen can be on while outbound fopen is still blocked (proxy setups); try curl
 	}
 	if (!function_exists('curl_init')) {
 		return false;
