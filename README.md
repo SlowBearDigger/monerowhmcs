@@ -1,77 +1,53 @@
-# MoneroWHMCS (PHP 8 / WHMCS 8.x and 9.x compatibility fix)
+# MoneroWHMCS
+A WHMCS Payment Gateway for accepting Monero
 
-A fork of [monero-integrations/monerowhmcs](https://github.com/monero-integrations/monerowhmcs)
-that makes the Monero payment gateway work again on current WHMCS. Tested on WHMCS 8.13.4 and
-9.0.5, which run on PHP 8.x.
+## Dependencies
+This plugin is rather simple but there are a few things that need to be set up beforehand.
 
-The original design is kept as it was: fully self-hosted, talking to your own `monero-wallet-rpc`
-and daemon, integrated address plus payment id, and a QR or copiable address at checkout. Nothing
-about how payments work was redesigned. This addresses the Monero bounty
-["Fix WHMCS Payment Gateway for Monero"](https://bounties.monero.social/posts/158).
+* A web server with PHP 7.4 to 8.3 and mysql
 
-## What was broken
+* The Monero wallet-cli and Monero wallet-rpc tools found [here](https://getmonero.org/downloads/)
 
-The last release of the original targeted WHMCS 7.2 and PHP 5/7. On the PHP 8.x that current WHMCS
-runs on, it is non-functional. Two of these are hard fatals, and one has nothing to do with PHP but
-stops payments from being priced:
+* [WHMCS](https://www.whmcs.com/) 8.x or 9.x
+This Monero plugin is a payment gateway for WHMCS
 
-1. `money_format()` (in `monero.php`, when rendering the pay page) was removed in PHP 8.0. The
-   gateway throws `Call to undefined function money_format()` the moment a customer opens the
-   invoice. This is the main reason the gateway looks dead once it is enabled.
-2. `FILTER_SANITIZE_STRING` (`createinvoice.php` and `verify.php`) was deprecated in PHP 8.1.
-3. `verify.php` read `$record[0]->transid` without checking the row exists, which is a fatal on
-   PHP 8 whenever the transaction has not been recorded yet.
-4. The price feed (cryptocompare's free endpoint) now returns HTTP 401 and requires an API key, so
-   the fiat to XMR conversion got no rate and hit a division by zero.
+The checkout page shows an integrated address with a QR code. The QR is generated in the customer's browser by a bundled copy of [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) (MIT), so the payment address and amount are not sent to any third-party service.
 
-## What was fixed
+## Step 1: Activating the plugin
+* Downloading: First of all, you will need to download the plugin.  If you wish, you can also download the latest source code from GitHub. This can be done with the command `git clone https://github.com/monero-integrations/monerowhmcs.git` or can be downloaded as a zip file from the GitHub web page.
 
-- `money_format()` replaced with `number_format()`.
-- `FILTER_SANITIZE_STRING` replaced with `FILTER_UNSAFE_RAW`; checkout inputs that are printed on
-  the payment page are reduced to the characters they can legitimately contain, and the verify poll
-  keeps the existing callback hash check for the payment fields.
-- The `tblaccounts` lookup uses `first()` with a null check.
-- The price feed now uses CoinGecko (free, no key) with a Kraken fallback for USD, EUR and BTC,
-  because CoinGecko's free endpoint blocks some datacenter IPs and WHMCS often runs on a VPS.
 
-Each change is a small, in-place edit with a comment explaining why. The wallet-rpc connection, the
-integrated-address flow, the payment-detection logic and the checkout flow all work the same way;
-only these PHP 8 compatibility shims were applied to them.
+* Put the plugin in the correct directory: You will need to copy `monero.php` and the folder named `monero` from this repo/unzipped release into the WHMCS Payment Gateways directory. This can be found at `whmcspath/modules/gateways/`
 
-## Two branches
+* Activate the plugin from the WHMCS admin panel: Once you login to the admin panel in WHMCS, click on "Setup -> Payments -> Payment Gateways". Click on "All Payment Gateways". Then click on the "Monero" gateway to activate it.
 
-The original drew the checkout QR by loading an image from a third-party API
-(`api.qrserver.com`), which sends the payment address and amount to an outside service. That goes
-against the self-hosted, no-third-parties goal, so it could not stay. There are two branches so you
-can pick the trade-off you prefer:
+* Enter a Module Secret Key.  This can be any random text and is used to verify payments.  
 
-- **`fix-php8-no-qr`** removes the third-party QR and keeps the copiable address. Smallest change.
-- **`fix-php8-local-qr`** keeps a QR, but serves a small bundled MIT library
-  ([qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator)) and generates it in the
-  customer's browser. The payment address and amount no longer go to a third-party QR service.
+* Enter the values for Wallet RPC Host, Wallet RPC Port, Username, and Password (these are from monero-wallet-rpc below).  Optionally enter a percentage discount for all invoices paid via Monero.
 
-Both satisfy "QR or copiable address" with no third-party call.
+* Optionally install the addon module to disable WHMCS fraud checking when using Monero. You will need to copy the folder `addons/moneroenable/` from this repo/unzipped release into the WHMCS Addons directory. This can be found at `whmcspath/addons/`.  
 
-## Evidence
+* Activate the Monero Enabler addon from the WHMCS admin panel: Click on "Setup -> Addon Modules". Find "Monero Enabler" and click on "Activate". Click "Configure" and choose the Monero Payment Gateway in the drop down list. Check the box for "Enable checking for payment method by module" and click "Save Changes".
 
-See [docs/EVIDENCE.md](docs/EVIDENCE.md). The admin setup, checkout render, integrated-address
-creation, verify poll, and invoice-credit path were tested on WHMCS 8.13.4 and 9.0.5 (PHP 8.3) in
-Docker, with `monero-wallet-rpc` running on stagenet.
+## Step 2: Get a Monero daemon to connect to
 
-## Install
+### Option 1: Running a full node yourself
 
-1. Copy `modules/gateways/monero.php` and the `modules/gateways/monero/` folder into your WHMCS
-   `modules/gateways/` directory.
-2. Optionally copy `modules/addons/moneroenable/` into `modules/addons/` for the fraud-check helper.
-3. In WHMCS go to Configuration, System Settings, Payment Gateways, and activate Monero.
-4. Set your `monero-wallet-rpc` host, port and login (if you use one) and a secret key.
-5. Run `monero-wallet-rpc` against your own daemon, the same as before.
+To do this: start the Monero daemon on your server and leave it running in the background. This can be accomplished by running `./monerod` inside your Monero downloads folder. The first time that you start your node, the Monero daemon will download and sync the entire Monero blockchain. This can take several hours and is best done on a machine with at least 4GB of ram, an SSD hard drive (with at least 15GB of free space), and a high speed internet connection.
 
-## Requirements
+### Option 2: Connecting to a remote node
+The easiest way to find a remote node to connect to is to visit [moneroworld.com](https://moneroworld.com/#nodes) and use one of the nodes offered. It is probably easiest to use node.moneroworld.com:18089 which will automatically connect you to a random node.
 
-PHP 7.4 to 8.3, WHMCS 8.x or 9.x, and a self-hosted `monerod` plus `monero-wallet-rpc`.
+## Step 3: Setup your Monero wallet-rpc
 
-## Credit
+* Setup a Monero wallet using the monero-wallet-cli tool. If you do not know how to do this you can learn about it at [getmonero.org](https://getmonero.org/resources/user-guides/monero-wallet-cli.html)
 
-This is a fork of `monero-integrations/monerowhmcs` (MIT). All of the original work is by the
-monero-integrations contributors. This fork only adds the compatibility fixes listed above.
+* Start the Wallet RPC and leave it running in the background. This can be accomplished by running `./monero-wallet-rpc --rpc-bind-port 18082 --rpc-login username:password --log-level 2 --wallet-file /path/walletfile` where "username:password" is the username and password that you want to use, separated by a colon and  "/path/walletfile" is your actual wallet file. If you wish to use a remote node you can add the `--daemon-address` flag followed by the address of the node. `--daemon-address node.moneroworld.com:18089` for example.
+
+
+
+## Info on server authentication
+It is recommended that you specify a username/password with your wallet rpc. This can be done by starting your wallet rpc with `monero-wallet-rpc --rpc-bind-port 18082 --rpc-login username:password --wallet-file /path/walletfile` where "username:password" is the username and password that you want to use, separated by a colon. Alternatively, you can use the `--restricted-rpc` flag with the wallet rpc like so `./monero-wallet-rpc --testnet --rpc-bind-port 18082 --restricted-rpc --wallet-file wallet/path`.
+
+## Donating Me
+XMR Address : `44krVcL6TPkANjpFwS2GWvg1kJhTrN7y9heVeQiDJ3rP8iGbCd5GeA4f3c2NKYHC1R4mCgnW7dsUUUae2m9GiNBGT4T8s2X`
