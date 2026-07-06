@@ -74,7 +74,6 @@ function monero_http_get($url) {
 		CURLOPT_HTTPHEADER     => array('Accept: application/json'),
 	));
 	$response = @curl_exec($ch);
-	curl_close($ch);
 	return $response;
 }
 
