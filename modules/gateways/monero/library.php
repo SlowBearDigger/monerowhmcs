@@ -159,8 +159,8 @@ class Monero_rpc
         {
             throw new RuntimeException('Unable to connect to '.$this->url . ' Error: ' . curl_error($ch));
         }
-        // close the connection
-        curl_close($ch);
+        // no curl_close: it is a no-op since PHP 8.0 and deprecated in 8.5 (the handle frees itself).
+        // Left in, its notice would print into the verify.php AJAX output on 8.5.
         return $response;
     }
 
