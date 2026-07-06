@@ -3,6 +3,7 @@ include("../../../init.php");
 include("../../../includes/functions.php");
 include("../../../includes/gatewayfunctions.php");
 include("../../../includes/invoicefunctions.php");
+require_once(__DIR__ . '/../monero.php');
 
 
 $gatewaymodule = "monero";
@@ -29,11 +30,15 @@ $system_url = rtrim(\App::getSystemURL(), '/');  // Strips default trailing / if
 $monero_daemon = new Monero_rpc($link);
 
 $message = "Waiting for your payment.";
-// FILTER_SANITIZE_STRING is gone in PHP 8.1. These get echoed into the page, so strip each one
-// down to the chars it can legitimately hold (digits and a currency code) to kill any XSS.
+// FILTER_SANITIZE_STRING is gone in PHP 8.1. These get echoed into the page, so validate or strip
+// them down before rendering.
 $_POST  = filter_input_array(INPUT_POST, FILTER_UNSAFE_RAW);
 $currency = preg_replace('/[^A-Za-z]/', '', $_POST['currency'] ?? '');
-$amount_xmr = preg_replace('/[^0-9.]/', '', $_POST['amount_xmr'] ?? '');
+$amount_xmr_raw = $_POST['amount_xmr'] ?? '';
+if (!is_numeric($amount_xmr_raw) || $amount_xmr_raw <= 0) {
+	die("Invalid XMR amount.");
+}
+$amount_xmr = monero_format_xmr_amount($amount_xmr_raw);
 $amount = preg_replace('/[^0-9.]/', '', $_POST['amount'] ?? '');
 $payment_id = monero_payment_id();
 $invoice_id = preg_replace('/[^0-9]/', '', $_POST['invoice_id'] ?? '');
