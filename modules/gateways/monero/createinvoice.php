@@ -39,6 +39,11 @@ if (!is_numeric($amount_xmr_raw) || $amount_xmr_raw <= 0) {
 	die("Invalid XMR amount.");
 }
 $amount_xmr = monero_format_xmr_amount($amount_xmr_raw);
+// the formatter also returns '0' for values it rejects (overflow past int64, sub-piconero); a pay
+// page asking for 0 XMR makes no sense, so refuse those the same way
+if ($amount_xmr === '0') {
+	die("Invalid XMR amount.");
+}
 $amount = preg_replace('/[^0-9.]/', '', $_POST['amount'] ?? '');
 $payment_id = monero_payment_id();
 $invoice_id = preg_replace('/[^0-9]/', '', $_POST['invoice_id'] ?? '');
