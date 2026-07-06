@@ -1,6 +1,10 @@
 # MoneroWHMCS
 A WHMCS Payment Gateway for accepting Monero
 
+## Screenshot
+
+![Monero payment page at checkout](docs/screenshots/checkout.png)
+
 ## Dependencies
 This plugin is rather simple but there are a few things that need to be set up beforehand.
 
