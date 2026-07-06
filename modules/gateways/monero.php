@@ -184,7 +184,7 @@ function monero_format_xmr_amount($xmr) {
 		return '0';
 	}
 	$atomic = round($xmr * 1000000000000);
-	if ($atomic <= 0 || $atomic > PHP_INT_MAX) {
+	if (!is_finite($atomic) || $atomic <= 0 || $atomic >= PHP_INT_MAX) {
 		return '0';
 	}
 	$atomic = (int)$atomic;
