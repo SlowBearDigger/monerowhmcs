@@ -176,6 +176,26 @@ function monero_retrieve_price($currency) {
 	return null;
 }
 
+// Return a plain decimal XMR amount at piconero precision. PHP prints small floats as 1.0E-5;
+// checkout POST handling expects a decimal string, so canonicalize before the amount is signed.
+function monero_format_xmr_amount($xmr) {
+	$xmr = (float)$xmr;
+	if (!is_finite($xmr) || $xmr <= 0) {
+		return '0';
+	}
+	$atomic = round($xmr * 1000000000000);
+	if (!is_finite($atomic) || $atomic <= 0 || $atomic >= PHP_INT_MAX) {
+		return '0';
+	}
+	$atomic = (int)$atomic;
+	$whole = intdiv($atomic, 1000000000000);
+	$fraction = $atomic % 1000000000000;
+	if ($fraction == 0) {
+		return (string)$whole;
+	}
+	return $whole . '.' . rtrim(str_pad((string)$fraction, 12, '0', STR_PAD_LEFT), '0');
+}
+
 function monero_changeto($amount, $currency){
     $xmr_live_price = monero_retrieve_price($currency);
 	// retrieve_price returns null when every source fails. Guard the divide so checkout shows 0
@@ -185,13 +205,15 @@ function monero_changeto($amount, $currency){
 	}
 	$live_for_storing = $xmr_live_price * 100; //This will remove the decimal so that it can easily be stored as an integer
 	$new_amount = $amount / $xmr_live_price;
-	$rounded_amount = round($new_amount, 12);
-    return $rounded_amount;
+	return monero_format_xmr_amount($new_amount);
 }
 
 function xmr_to_fiat($amount, $currency){
     $xmr_live_price = monero_retrieve_price($currency);
     $amount = $amount / 1000000000000;
+	if (!is_numeric($xmr_live_price) || $xmr_live_price <= 0) {
+		return 0;
+	}
 	$new_amount = $amount * $xmr_live_price;
 	$rounded_amount = round($new_amount, 2);
     return $rounded_amount;

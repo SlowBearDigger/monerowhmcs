@@ -47,34 +47,19 @@ function verify_payment($payment_id, $amount, $amount_xmr, $invoice_id, $fee, $s
 		}
 		$message = "Waiting for your payment.";
 
- 		//payment_id is sometimes empty
+		//payment_id is sometimes empty
 
 		// detection talks to the wallet rpc/daemon; a transient outage must not 500 the customer's
-		// polling page, so wrap it and stay in the waiting state on any rpc error.
+		// polling page, so wrap only the RPC calls and stay in the waiting state on any RPC error.
+		$get_transfers_method = array();
+		$get_payments_method = array();
 		try {
 		// send each monero tx in the mempool to handle_whmcs
 		if ($check_mempool) {
-			$get_payments_method = $monero_daemon->get_transfers('pool', true);
-			// the wallet omits "pool"/"payments" entirely when empty; ?? [] avoids foreach(null)
-			foreach (($get_payments_method["pool"] ?? []) as $tx => $transactions) {
-				$txn_amt = $transactions["amount"];
-				$txn_txid = $transactions["txid"];
-				$txn_payment_id = $transactions["payment_id"];
-				if(isset($txn_amt)) { 
-					return handle_whmcs($invoice_id, $amount_xmr, $txn_amt, $txn_txid, $txn_payment_id, $payment_id, $currency, $gatewaymodule);
-				}
-			}
+			$get_transfers_method = $monero_daemon->get_transfers('pool', true);
 		}
 		// send each monero tx to handle_whmcs
 		$get_payments_method = $monero_daemon->get_payments($payment_id);
-		foreach (($get_payments_method["payments"] ?? []) as $tx => $transactions) {
-			$txn_amt = $transactions["amount"];
-			$txn_txid = $transactions["tx_hash"];
-			$txn_payment_id = $transactions["payment_id"];
-			if(isset($txn_amt)) { 
-				return handle_whmcs($invoice_id, $amount_xmr, $txn_amt, $txn_txid, $txn_payment_id, $payment_id, $currency, $gatewaymodule);
-			}
-		}
 		} catch (\Throwable $e) {
 			// keep the customer poll in the waiting state, but record the real failure for the admin
 			if (function_exists('logTransaction')) {
@@ -83,6 +68,25 @@ function verify_payment($payment_id, $amount, $amount_xmr, $invoice_id, $fee, $s
 					'payment_id' => $payment_id,
 					'error' => $e->getMessage(),
 				), 'Payment verification error');
+			}
+		}
+		if ($check_mempool) {
+			// the wallet omits "pool"/"payments" entirely when empty; ?? [] avoids foreach(null)
+			foreach (($get_transfers_method["pool"] ?? []) as $tx => $transactions) {
+				$txn_amt = $transactions["amount"];
+				$txn_txid = $transactions["txid"];
+				$txn_payment_id = $transactions["payment_id"];
+				if(isset($txn_amt)) { 
+					return handle_whmcs($invoice_id, $amount_xmr, $txn_amt, $txn_txid, $txn_payment_id, $payment_id, $currency, $gatewaymodule);
+				}
+			}
+		}
+		foreach (($get_payments_method["payments"] ?? []) as $tx => $transactions) {
+			$txn_amt = $transactions["amount"];
+			$txn_txid = $transactions["tx_hash"];
+			$txn_payment_id = $transactions["payment_id"];
+			if(isset($txn_amt)) { 
+				return handle_whmcs($invoice_id, $amount_xmr, $txn_amt, $txn_txid, $txn_payment_id, $payment_id, $currency, $gatewaymodule);
 			}
 		}
 	} else {
